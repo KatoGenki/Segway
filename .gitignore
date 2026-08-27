@@ -27,6 +27,11 @@
 
 # Visual Studio cache directory
 .vs/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.cursor/
+.idea/
 
 # Gradle cache directory
 .gradle/

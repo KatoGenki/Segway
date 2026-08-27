@@ -1,0 +1,15 @@
+{
+  "files.exclude": {
+    "**/.DS_Store": true,
+    "**/.git": true,
+    "**/.vs": true,
+    "**/*.meta": false
+  },
+  "search.exclude": {
+    "**/Library": true,
+    "**/Temp": true,
+    "**/Logs": true,
+    "**/Obj": true
+  },
+  "dotnet.defaultSolution": "My project.sln"
+}
