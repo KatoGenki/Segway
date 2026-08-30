@@ -14,6 +14,8 @@ public sealed class PlayerController : MonoBehaviour
     [SerializeField] private Rigidbody body;
     // 本体の物理姿勢とは分けて、クリック旋回とリーン演出を表示する子モデル。
     [SerializeField] private Transform visualRoot;
+    // 人物モデルの停止・前進・後退アニメーションへ前後入力を渡すコンポーネント。
+    [SerializeField] private SegwayRiderAnimation riderAnimation;
 
     [Header("Movement")]
     // 前進時に到達できる最高速度。
@@ -92,6 +94,17 @@ public sealed class PlayerController : MonoBehaviour
         {
             visualRootBaseLocalRotation = visualRoot.localRotation;
         }
+
+        if (riderAnimation == null)
+        {
+            riderAnimation = GetComponentInChildren<SegwayRiderAnimation>(true);
+        }
+
+        if (riderAnimation == null)
+        {
+            riderAnimation = FindAnyObjectByType<SegwayRiderAnimation>();
+        }
+
         CaptureMouseInputOrigin();
         //SetCursorLock(lockCursorForMouseSteering);
     }
@@ -102,6 +115,7 @@ public sealed class PlayerController : MonoBehaviour
         UpdateCursorLockState();
         forwardInput = ReadForwardInput();
         clickTurnInput = ReadClickTurnInput();
+        riderAnimation?.SetForwardInput(forwardInput);
 
         if (Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame)
         {
