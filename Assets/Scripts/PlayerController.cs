@@ -22,24 +22,30 @@ public sealed class PlayerController : MonoBehaviour
     [SerializeField, Min(0f)] private float maxForwardSpeed = 5f;
     // 左右クリックを押している間に変化する見出し角度の速さ（度/秒）。
     [SerializeField, Min(0f)] private float clickTurnSpeed = 120f;
+    // Inputが最大値のときに加える前後の駆動力。Inputは0.05刻みでこの力へ反映される。
+    [SerializeField, Min(0f)] private float maxDriveForce = 20f;
+    // 同じ前後方向のままInputを弱めたとき、目標速度まで一定で加える減速力。
+    [SerializeField, Min(0f)] private float inputReductionDecelerationForce = 10f;
+    // デッドゾーン内で前後の水平速度を落とす強さ。駆動中より強めに設定する。
+    [SerializeField, Min(0f)] private float deadZoneDeceleration = 8f;
 
     [Header("Jump")]
     // 地面から押し出すジャンプの瞬間的な力。
     [SerializeField, Min(0f)] private float jumpImpulse = 6.5f;
-    // この角度以下の面だけをジャンプ可能な地面として扱う。
-    [SerializeField, Range(0f, 89f)] private float maxGroundAngle = 55f;
     // 着地直前に押したジャンプ入力を受け付ける猶予時間。
     [SerializeField, Min(0f)] private float jumpBufferSeconds = 0.12f;
 
     [Header("Mouse input")]
-    // マウス入力の開始位置から、スティック最大入力になるまでの移動距離。小さいほど敏感。
+    // 相対マウス移動を仮想スティック最大入力へ変換するための移動距離。小さいほど敏感。
     [SerializeField, Min(1f)] private float mouseAccelerationSensitivity = 18f;
+    // この範囲内の前後入力は速度0として扱う安全圏。入力の微小な揺れを移動へ反映しない。
+    [SerializeField, Range(0f, 0.95f)] private float forwardInputDeadZone = 0.12f;
     // マウスを画面外へ出さず、連続した軌跡入力を受け取るための設定。
     [SerializeField] private bool lockCursorForMouseSteering = true;
 
     [Header("Visual lean")]
-    // 見た目のモデルだけが傾く最大角度。
-    [SerializeField, Range(0f, 35f)] private float maxLeanAngle = 18f;
+    // 前後入力でプレイヤーが傾く最大角度。Inspectorで0〜30度の範囲を調整できる。
+    [SerializeField, Range(0f, 30f)] private float maxLeanAngle = 30f;
     // 見た目の傾きが目標角度へ追従する速さ。
     [SerializeField, Min(0f)] private float leanResponse = 12f;
 
@@ -53,24 +59,29 @@ public sealed class PlayerController : MonoBehaviour
 
     // 現在フレームで物理移動へ渡す、前後方向だけの入力値。
     private float forwardInput;
+    // デッドゾーン適用前の前後入力。UIで実際のマウス／スティック位置を表示する。
+    private float rawForwardInput;
     // 現在フレームで見出し角を変える、左クリック=-1・右クリック=1の旋回入力値。
     private float clickTurnInput;
     // 物理接触の回転と切り離した、前後移動に使うプレイヤーの見出し角度。
     private float headingYaw;
     // モデルに設定済みの向きや傾きを失わないため、開始時に保存するローカル回転。
     private Quaternion visualRootBaseLocalRotation;
-    // マウスを仮想スティック中央として扱う、ゲーム開始時の画面上の位置。
-    private Vector2 mouseInputOrigin;
-    // マウス入力の開始位置を取得済みかどうか。
-    private bool hasMouseInputOrigin;
+    // フレームごとの相対マウス移動を積み上げた、前後用の仮想スティック入力。
+    private float relativeMouseForwardInput;
     // ジャンプボタンが押された後に残る入力受付時間。
     private float bufferedJumpTime;
-    // 接地判定から得る、現在ジャンプ可能かどうかの状態。
-    private bool isGrounded;
+    // ジャンプ中は壁へ押し付ける前後駆動を停止するための状態。
+    private bool isJumping;
+    // 子タイヤから取得する、現在ジャンプ可能かどうかの状態。
+    private TireController[] tires;
     // 外周円を描くために実行時だけ生成する半透明テクスチャ。
     private Texture2D virtualStickBaseTexture;
     // 入力位置を示すノブを描くために実行時だけ生成するテクスチャ。
     private Texture2D virtualStickKnobTexture;
+
+    // 前後入力を駆動力へ換算するときの固定刻み幅。
+    private const float ForwardInputSpeedStep = 0.05f;
 
     /// <summary>Inspectorから追加した直後に必要なRigidbody参照を自動設定します。</summary>
     private void Reset()
@@ -105,7 +116,8 @@ public sealed class PlayerController : MonoBehaviour
             riderAnimation = FindAnyObjectByType<SegwayRiderAnimation>();
         }
 
-        CaptureMouseInputOrigin();
+        tires = GetComponentsInChildren<TireController>(true);
+
         //SetCursorLock(lockCursorForMouseSteering);
     }
 
@@ -133,11 +145,11 @@ public sealed class PlayerController : MonoBehaviour
     private void FixedUpdate()
     {
         ApplyClickTurn();
-        ApplyForwardMovement();
         TryJump();
+        ApplyForwardMovement();
     }
 
-    /// <summary>左スティックまたはマウス開始位置からの縦方向変位を、前後入力として読み取ります。</summary>
+    /// <summary>左スティックまたは相対マウス移動を、前後入力として読み取ります。</summary>
     private float ReadForwardInput()
     {
         Vector2 gamepadInput = Gamepad.current != null ? Gamepad.current.leftStick.ReadValue() : Vector2.zero;
@@ -145,22 +157,38 @@ public sealed class PlayerController : MonoBehaviour
         // 実機の左スティックを前後へ倒している間は、その縦軸入力を優先する。
         if (Mathf.Abs(gamepadInput.y) > 0.0001f)
         {
-            return Mathf.Clamp(gamepadInput.y, -1f, 1f);
+            rawForwardInput = Mathf.Clamp(gamepadInput.y, -1f, 1f);
+            return ApplyForwardInputDeadZone(rawForwardInput);
         }
 
         if (Mouse.current == null)
         {
+            rawForwardInput = 0f;
             return 0f;
         }
 
-        if (!hasMouseInputOrigin)
+        // 毎フレームの相対移動量を積み上げるため、ゲーム開始時の画面座標を基準にしない。
+        float relativeVerticalMovement = Mouse.current.delta.ReadValue().y;
+        relativeMouseForwardInput = Mathf.Clamp(
+            relativeMouseForwardInput + relativeVerticalMovement / mouseAccelerationSensitivity,
+            -1f,
+            1f);
+        rawForwardInput = relativeMouseForwardInput;
+        return ApplyForwardInputDeadZone(rawForwardInput);
+    }
+
+    /// <summary>前後入力の安全圏を適用し、範囲外の入力は最大値1まで滑らかに再スケールします。</summary>
+    private float ApplyForwardInputDeadZone(float input)
+    {
+        float clampedInput = Mathf.Clamp(input, -1f, 1f);
+        float absoluteInput = Mathf.Abs(clampedInput);
+        if (absoluteInput <= forwardInputDeadZone)
         {
-            CaptureMouseInputOrigin();
+            return 0f;
         }
 
-        // 開始位置からの縦方向距離だけを、最大値1の前後入力へ変換する。入力時間は速度へ影響しない。
-        Vector2 mouseOffset = Mouse.current.position.ReadValue() - mouseInputOrigin;
-        return Mathf.Clamp(mouseOffset.y / mouseAccelerationSensitivity, -1f, 1f);
+        float rescaledInput = (absoluteInput - forwardInputDeadZone) / (1f - forwardInputDeadZone);
+        return Mathf.Sign(clampedInput) * rescaledInput;
     }
 
     /// <summary>左クリックを左旋回、右クリックを右旋回として読み取ります。同時押しは旋回なしです。</summary>
@@ -174,19 +202,6 @@ public sealed class PlayerController : MonoBehaviour
         bool turnLeft = Mouse.current.leftButton.isPressed;
         bool turnRight = Mouse.current.rightButton.isPressed;
         return turnLeft == turnRight ? 0f : (turnLeft ? -1f : 1f);
-    }
-
-    /// <summary>現在のマウス位置を、仮想スティック中央として保存します。</summary>
-    private void CaptureMouseInputOrigin()
-    {
-        if (Mouse.current == null)
-        {
-            hasMouseInputOrigin = false;
-            return;
-        }
-
-        mouseInputOrigin = Mouse.current.position.ReadValue();
-        hasMouseInputOrigin = true;
     }
 
     /// <summary>Escでカーソルを解放し、意図しないゲーム操作を停止します。</summary>
@@ -210,37 +225,129 @@ public sealed class PlayerController : MonoBehaviour
         Cursor.visible = !shouldLock;
     }
 
-    /// <summary>クリック中だけプレイヤー本体のY角度を更新し、物理トルクを発生させずにその場旋回させます。</summary>
+    /// <summary>クリック旋回のY角度と、前後入力に応じたX方向の傾きをプレイヤーへ反映します。</summary>
     private void ApplyClickTurn()
     {
         headingYaw += clickTurnInput * clickTurnSpeed * Time.fixedDeltaTime;
 
-        // 左右クリック中にだけRigidbody自身へ角度を加える。回転拘束中でもプレイヤーオブジェクトの向きへ確実に反映する。
-        if (clickTurnInput != 0f)
+        if (visualRoot == null)
         {
+            // 表示専用の子モデルがない場合は、プレイヤー本体へ直接リーンを反映する。
+            body.rotation = Quaternion.Euler(forwardInput * maxLeanAngle, headingYaw, 0f);
+        }
+        else if (clickTurnInput != 0f)
+        {
+            // 子モデルにリーンを任せる場合は、本体にはクリック旋回のY角度だけを反映する。
             body.rotation = Quaternion.Euler(0f, headingYaw, 0f);
         }
     }
 
-    /// <summary>現在の見出し方向へ、前後入力とその絶対値に比例した水平速度を設定します。</summary>
+    /// <summary>左右どちらかのタイヤが接地中なら、0.05刻みの前後入力に応じた駆動力を加えます。</summary>
     private void ApplyForwardMovement()
     {
+        if (isJumping)
+        {
+            // 上昇中、または空中にいる間は前後駆動を止めて壁登りを防ぐ。
+            if (body.linearVelocity.y > 0f || !HasGroundedTire())
+            {
+                return;
+            }
+
+            // 下降してタイヤが再び地面へ触れた時点で、通常の前後駆動を再開する。
+            isJumping = false;
+        }
+
+        // 空中では新しい移動速度を与えず、現在の慣性だけを維持する。
+        if (!HasGroundedTire())
+        {
+            return;
+        }
+
         Vector3 headingForward = Quaternion.Euler(0f, headingYaw, 0f) * Vector3.forward;
-        Vector3 horizontalVelocity = headingForward * (forwardInput * maxForwardSpeed);
-        body.linearVelocity = horizontalVelocity + Vector3.up * body.linearVelocity.y;
+        // 前後入力を0.05刻みに丸め、その刻みに対応する駆動力だけを使用する。
+        float quantizedForwardInput = QuantizeForwardInput(forwardInput);
+        if (Mathf.Abs(quantizedForwardInput) <= 0.0001f)
+        {
+            ApplyDeadZoneDeceleration();
+            return;
+        }
+
+        float currentForwardSpeed = Vector3.Dot(body.linearVelocity, headingForward);
+        float targetForwardSpeed = quantizedForwardInput * maxForwardSpeed;
+        bool inputOpposesCurrentMotion = currentForwardSpeed * quantizedForwardInput < 0f;
+        bool inputRequestsLowerSameDirectionSpeed = currentForwardSpeed * quantizedForwardInput > 0f
+            && Mathf.Abs(currentForwardSpeed) > Mathf.Abs(targetForwardSpeed);
+
+        if (inputOpposesCurrentMotion)
+        {
+            // 前後を切り替える場合も、前進加速と同じくInputに比例した駆動力を使う。
+            body.AddForce(headingForward * (quantizedForwardInput * maxDriveForce), ForceMode.Force);
+            return;
+        }
+
+        if (inputRequestsLowerSameDirectionSpeed)
+        {
+            // 同方向のままInputを戻したときは、速度の向きと反対へ一定の減速力を加える。
+            body.AddForce(headingForward * (-Mathf.Sign(currentForwardSpeed) * inputReductionDecelerationForce), ForceMode.Force);
+            return;
+        }
+
+        bool isAtRequestedSpeed = Mathf.Sign(quantizedForwardInput) == Mathf.Sign(currentForwardSpeed)
+            && Mathf.Abs(currentForwardSpeed) >= Mathf.Abs(targetForwardSpeed);
+        if (!isAtRequestedSpeed)
+        {
+            // 0.05ごとに変化するInputを、前後へ加える駆動力へ変換する。
+            body.AddForce(headingForward * (quantizedForwardInput * maxDriveForce), ForceMode.Force);
+        }
     }
 
-    /// <summary>接地中かつバッファ中のジャンプ入力があるときだけジャンプします。</summary>
+    /// <summary>入力を0.05刻みへ丸め、刻みごとの安定した目標速度を作ります。</summary>
+    private static float QuantizeForwardInput(float input)
+    {
+        return Mathf.Clamp(
+            Mathf.Round(input / ForwardInputSpeedStep) * ForwardInputSpeedStep,
+            -1f,
+            1f);
+    }
+
+    /// <summary>デッドゾーン内では駆動せず、水平速度へ強めの減速を掛けます。</summary>
+    private void ApplyDeadZoneDeceleration()
+    {
+        Vector3 horizontalVelocity = new(body.linearVelocity.x, 0f, body.linearVelocity.z);
+        Vector3 nextHorizontalVelocity = Vector3.MoveTowards(
+            horizontalVelocity,
+            Vector3.zero,
+            deadZoneDeceleration * Time.fixedDeltaTime);
+        body.linearVelocity = nextHorizontalVelocity + Vector3.up * body.linearVelocity.y;
+    }
+
+    /// <summary>左右いずれかのタイヤが接地中かつ、バッファ中のジャンプ入力があるときだけジャンプします。</summary>
     private void TryJump()
     {
-        if (!isGrounded || bufferedJumpTime <= 0f)
+        if (!HasGroundedTire() || bufferedJumpTime <= 0f)
         {
             return;
         }
 
         bufferedJumpTime = 0f;
-        isGrounded = false;
+        isJumping = true;
+        // ジャンプ開始時は前後の慣性を消し、その場から垂直に跳び上がる。
+        body.linearVelocity = Vector3.up * body.linearVelocity.y;
         body.AddForce(Vector3.up * jumpImpulse, ForceMode.Impulse);
+    }
+
+    /// <summary>左右どちらかのタイヤが接地しているときだけ true を返します。</summary>
+    private bool HasGroundedTire()
+    {
+        foreach (TireController tire in tires)
+        {
+            if (tire.IsGrounded)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>物理本体を倒さず、子モデルへクリック旋回と前後リーンを反映します。</summary>
@@ -254,7 +361,7 @@ public sealed class PlayerController : MonoBehaviour
         // 初期のモデル姿勢を基準に、見出し角のY回転と前後入力のXリーンを合成する。Rigidbody本体の物理回転は使わない。
         Quaternion targetLean = Quaternion.Euler(0f, headingYaw, 0f)
             * visualRootBaseLocalRotation
-            * Quaternion.Euler(-forwardInput * maxLeanAngle, 0f, 0f);
+            * Quaternion.Euler(forwardInput * maxLeanAngle, 0f, 0f);
         visualRoot.localRotation = Quaternion.Slerp(
             visualRoot.localRotation,
             targetLean,
@@ -288,7 +395,17 @@ public sealed class PlayerController : MonoBehaviour
         Rect knobRect = new(knobCenter.x - knobSize * 0.5f, knobCenter.y - knobSize * 0.5f, knobSize, knobSize);
         GUI.DrawTexture(knobRect, virtualStickKnobTexture);
 
-        GUI.Label(new Rect(baseRect.x, baseRect.y - 22f, size, 20f), "Mouse / Left Stick");
+        float currentForwardSpeed = body == null
+            ? 0f
+            : Vector3.Dot(
+                body.linearVelocity,
+                Quaternion.Euler(0f, headingYaw, 0f) * Vector3.forward);
+        Rect infoRect = new(baseRect.x, baseRect.y - 88f, size, 84f);
+        GUI.Box(infoRect, GUIContent.none);
+        GUI.Label(new Rect(infoRect.x + 6f, infoRect.y + 4f, size - 12f, 20f), "Mouse / Left Stick");
+        GUI.Label(new Rect(infoRect.x + 6f, infoRect.y + 24f, size - 12f, 20f), $"Input: {rawForwardInput:F2}");
+        GUI.Label(new Rect(infoRect.x + 6f, infoRect.y + 44f, size - 12f, 20f), $"Dead Zone: +/-{forwardInputDeadZone:F2}");
+        GUI.Label(new Rect(infoRect.x + 6f, infoRect.y + 64f, size - 12f, 20f), $"Speed: {currentForwardSpeed:F2}");
     }
 
     /// <summary>仮想スティック描画に必要な円形テクスチャを、最初の描画時だけ生成します。</summary>
@@ -336,22 +453,4 @@ public sealed class PlayerController : MonoBehaviour
         Destroy(virtualStickKnobTexture);
     }
 
-    /// <summary>傾斜が許容範囲の接触面を検出し、接地状態にします。</summary>
-    private void OnCollisionStay(Collision collision)
-    {
-        foreach (ContactPoint contact in collision.contacts)
-        {
-            if (Vector3.Angle(contact.normal, Vector3.up) <= maxGroundAngle)
-            {
-                isGrounded = true;
-                return;
-            }
-        }
-    }
-
-    /// <summary>地面との接触が終わった時点でジャンプ不可にします。</summary>
-    private void OnCollisionExit(Collision collision)
-    {
-        isGrounded = false;
-    }
 }
