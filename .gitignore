@@ -19,6 +19,15 @@
 # Recordings can get excessive in size
 /[Rr]ecordings/
 
+# Third-party Unity assets are kept locally and restored separately.
+# They are excluded from the public source repository to keep it compact
+# and to avoid redistributing externally licensed packages.
+/Assets/JC_LP_MegaCity/
+/Assets/AllSkyFree/
+/Assets/AllSkyFree.meta
+/Assets/HIVEMIND/
+/Assets/HIVEMIND.meta
+
 # Uncomment this line if you wish to ignore the asset store tools plugin
 # /[Aa]ssets/AssetStoreTools*
 

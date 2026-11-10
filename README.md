@@ -34,6 +34,18 @@ Unity Hubから指定バージョンのUnity Editorを導入し、このフォ�
 ## Git運用
 
 `Library/`、`Temp/`、`Logs/`、`UserSettings/`、IDEのローカル状態、Unityが生成するソリューションファイルは `.gitignore` で除外しています。
-Unityプロジェクトとして必要な `Assets/`、`Packages/`、`ProjectSettings/` は管理対象です。
+ゲーム固有の `Assets/`、`Packages/`、`ProjectSettings/` は管理対象です。
+
+## 外部アセットの復元
+
+リポジトリを小さく保ち、外部アセットを再配布しないため、次のフォルダはGit管理外です。
+
+- `Assets/JC_LP_MegaCity/`
+- `Assets/AllSkyFree/`
+- `Assets/HIVEMIND/`
+
+開発環境では、各アセットを正規の入手元から取得し、上記と同じフォルダ構成でUnityプロジェクトへ導入してください。MegaCityを使用するシーンを開く場合は、先に `Assets/JC_LP_MegaCity/` を復元します。
+
+`Assets/Models/` 内の大きなキャラクターモデルは Git LFS で管理します。クローン後は `git lfs install` と `git lfs pull` を実行して取得してください。
 
 ライセンスは未設定です。公開リポジトリにする場合は、公開前に利用条件に合うライセンスを追加してください。
