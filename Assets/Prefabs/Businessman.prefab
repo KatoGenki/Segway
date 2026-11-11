@@ -85,6 +85,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TireController
   wheelCollider: {fileID: 299766204243370698}
+  maxMotorTorque: 750
   groundProbeStartOffset: 0.12
   groundProbePadding: 0.08
   maxGroundAngle: 55
@@ -177,6 +178,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TireController
   wheelCollider: {fileID: 3037806565071485730}
+  maxMotorTorque: 750
   groundProbeStartOffset: 0.12
   groundProbePadding: 0.08
   maxGroundAngle: 55
@@ -193,28 +195,16 @@ PrefabInstance:
     m_TransformParent: {fileID: 0}
     m_Modifications:
     - target: {fileID: -8679921383154817045, guid: 31b54b714a21e394fbe7beb6f7a3fb25, type: 3}
-      propertyPath: m_LocalScale.x
-      value: 0.27
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 31b54b714a21e394fbe7beb6f7a3fb25, type: 3}
-      propertyPath: m_LocalScale.y
-      value: 0.27
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 31b54b714a21e394fbe7beb6f7a3fb25, type: 3}
-      propertyPath: m_LocalScale.z
-      value: 0.27
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 31b54b714a21e394fbe7beb6f7a3fb25, type: 3}
       propertyPath: m_LocalPosition.x
-      value: -147.6
+      value: -388.56314
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 31b54b714a21e394fbe7beb6f7a3fb25, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 2.71
+      value: 0.85022223
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 31b54b714a21e394fbe7beb6f7a3fb25, type: 3}
       propertyPath: m_LocalPosition.z
-      value: -197.7
+      value: -186.34036
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 31b54b714a21e394fbe7beb6f7a3fb25, type: 3}
       propertyPath: m_LocalRotation.w
@@ -243,10 +233,6 @@ PrefabInstance:
     - target: {fileID: -8679921383154817045, guid: 31b54b714a21e394fbe7beb6f7a3fb25, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 31b54b714a21e394fbe7beb6f7a3fb25, type: 3}
-      propertyPath: m_ConstrainProportionsScale
-      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 919132149155446097, guid: 31b54b714a21e394fbe7beb6f7a3fb25, type: 3}
       propertyPath: m_Name
@@ -344,8 +330,8 @@ Rigidbody:
   m_UseGravity: 1
   m_IsKinematic: 0
   m_Interpolate: 0
-  m_Constraints: 112
-  m_CollisionDetection: 2
+  m_Constraints: 0
+  m_CollisionDetection: 0
 --- !u!114 &1966973629142896491
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -361,15 +347,11 @@ MonoBehaviour:
   body: {fileID: 5944742943054992117}
   visualRoot: {fileID: 0}
   riderAnimation: {fileID: 7915041799751179209}
-  maxForwardSpeed: 10
+  maxForwardSpeed: 5
   clickTurnSpeed: 120
-  maxDriveForce: 50
-  inputReductionDecelerationForce: 10
-  deadZoneDeceleration: 30
   jumpImpulse: 6.5
   jumpBufferSeconds: 0.12
-  mouseAccelerationSensitivity: 500
-  forwardInputDeadZone: 0.3
+  mouseAccelerationSensitivity: 18
   lockCursorForMouseSteering: 1
   maxLeanAngle: 18
   leanResponse: 12

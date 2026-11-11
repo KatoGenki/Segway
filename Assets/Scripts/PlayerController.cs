@@ -67,12 +67,6 @@ public sealed class PlayerController : MonoBehaviour
     private float headingYaw;
     // モデルに設定済みの向きや傾きを失わないため、開始時に保存するローカル回転。
     private Quaternion visualRootBaseLocalRotation;
-    // visualRoot が未指定の既存Prefabで、表示モデルだけを傾ける対象の直下Transform群。
-    private Transform[] automaticVisualRoots;
-    // 表示モデルを傾ける前の、各Transformのローカル位置。
-    private Vector3[] automaticVisualRootBaseLocalPositions;
-    // 表示モデルを傾ける前の、各Transformのローカル回転。
-    private Quaternion[] automaticVisualRootBaseLocalRotations;
     // フレームごとの相対マウス移動を積み上げた、前後用の仮想スティック入力。
     private float relativeMouseForwardInput;
     // ジャンプボタンが押された後に残る入力受付時間。
@@ -81,10 +75,6 @@ public sealed class PlayerController : MonoBehaviour
     private bool isJumping;
     // 子タイヤから取得する、現在ジャンプ可能かどうかの状態。
     private TireController[] tires;
-    // 直近の物理更新で接触した、移動を妨げる壁面の法線。
-    private Vector3 blockingWallNormal;
-    // 壁面に触れた物理時刻。停止時に壁へ力を加えない判定に使う。
-    private float lastWallContactFixedTime = float.NegativeInfinity;
     // 外周円を描くために実行時だけ生成する半透明テクスチャ。
     private Texture2D virtualStickBaseTexture;
     // 入力位置を示すノブを描くために実行時だけ生成するテクスチャ。
@@ -92,10 +82,6 @@ public sealed class PlayerController : MonoBehaviour
 
     // 前後入力を駆動力へ換算するときの固定刻み幅。
     private const float ForwardInputSpeedStep = 0.05f;
-    // これ以下の水平速度なら、壁に押し付けて停止しているとみなす。
-    private const float WallBlockSpeedThreshold = 0.1f;
-    // この値より水平に近い接触面を壁として扱う。
-    private const float WallContactMaxUpDot = 0.35f;
 
     /// <summary>Inspectorから追加した直後に必要なRigidbody参照を自動設定します。</summary>
     private void Reset()
@@ -111,18 +97,13 @@ public sealed class PlayerController : MonoBehaviour
             body = GetComponent<Rigidbody>();
         }
 
-        // 衝突で発生する角速度は全軸で固定し、旋回は下のコードからY軸角度だけを明示的に設定する。
+        // 衝突による予期しない回転を防ぐため、物理シミュレーション上の回転をすべて固定する。
         body.constraints |= RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationY | RigidbodyConstraints.FreezeRotationZ;
-        body.angularVelocity = Vector3.zero;
         body.rotation = Quaternion.identity;
         headingYaw = 0f;
         if (visualRoot != null)
         {
             visualRootBaseLocalRotation = visualRoot.localRotation;
-        }
-        else
-        {
-            CacheAutomaticVisualRoots();
         }
 
         if (riderAnimation == null)
@@ -163,7 +144,6 @@ public sealed class PlayerController : MonoBehaviour
     /// <summary>物理更新のタイミングでクリック旋回、前後移動、ジャンプを適用します。</summary>
     private void FixedUpdate()
     {
-        ResolveTireGroundPenetration();
         ApplyClickTurn();
         TryJump();
         ApplyForwardMovement();
@@ -245,11 +225,21 @@ public sealed class PlayerController : MonoBehaviour
         Cursor.visible = !shouldLock;
     }
 
-    /// <summary>クリック旋回に使う見出し角度を更新し、Colliderを持つ物理本体はY軸だけ回転させます。</summary>
+    /// <summary>クリック旋回のY角度と、前後入力に応じたX方向の傾きをプレイヤーへ反映します。</summary>
     private void ApplyClickTurn()
     {
         headingYaw += clickTurnInput * clickTurnSpeed * Time.fixedDeltaTime;
-        body.rotation = Quaternion.Euler(0f, headingYaw, 0f);
+
+        if (visualRoot == null)
+        {
+            // 表示専用の子モデルがない場合は、プレイヤー本体へ直接リーンを反映する。
+            body.rotation = Quaternion.Euler(forwardInput * maxLeanAngle, headingYaw, 0f);
+        }
+        else if (clickTurnInput != 0f)
+        {
+            // 子モデルにリーンを任せる場合は、本体にはクリック旋回のY角度だけを反映する。
+            body.rotation = Quaternion.Euler(0f, headingYaw, 0f);
+        }
     }
 
     /// <summary>左右どちらかのタイヤが接地中なら、0.05刻みの前後入力に応じた駆動力を加えます。</summary>
@@ -283,12 +273,6 @@ public sealed class PlayerController : MonoBehaviour
         }
 
         float currentForwardSpeed = Vector3.Dot(body.linearVelocity, headingForward);
-        if (IsStoppedAgainstWall(headingForward, quantizedForwardInput))
-        {
-            // 停止したまま壁を押す入力では、接触解決による上方向への押し出しを発生させない。
-            return;
-        }
-
         float targetForwardSpeed = quantizedForwardInput * maxForwardSpeed;
         bool inputOpposesCurrentMotion = currentForwardSpeed * quantizedForwardInput < 0f;
         bool inputRequestsLowerSameDirectionSpeed = currentForwardSpeed * quantizedForwardInput > 0f
@@ -337,77 +321,18 @@ public sealed class PlayerController : MonoBehaviour
         body.linearVelocity = nextHorizontalVelocity + Vector3.up * body.linearVelocity.y;
     }
 
-    /// <summary>タイヤが床面へ沈んだ分だけ上へ戻し、壁面では補正しません。</summary>
-    private void ResolveTireGroundPenetration()
-    {
-        if (isJumping || body.linearVelocity.y > 0f)
-        {
-            return;
-        }
-
-        float largestPenetration = 0f;
-        foreach (TireController tire in tires)
-        {
-            largestPenetration = Mathf.Max(largestPenetration, tire.GetGroundPenetration());
-        }
-
-        if (largestPenetration <= 0.0001f)
-        {
-            return;
-        }
-
-        body.position += Vector3.up * largestPenetration;
-        if (body.linearVelocity.y < 0f)
-        {
-            body.linearVelocity = new Vector3(body.linearVelocity.x, 0f, body.linearVelocity.z);
-        }
-    }
-
-    /// <summary>停止状態で前方または後方の壁を押している場合にtrueを返します。</summary>
-    private bool IsStoppedAgainstWall(Vector3 headingForward, float input)
-    {
-        if (Time.fixedTime - lastWallContactFixedTime > Time.fixedDeltaTime * 1.5f)
-        {
-            return false;
-        }
-
-        Vector3 horizontalVelocity = new(body.linearVelocity.x, 0f, body.linearVelocity.z);
-        if (horizontalVelocity.magnitude > WallBlockSpeedThreshold)
-        {
-            return false;
-        }
-
-        Vector3 driveDirection = headingForward * Mathf.Sign(input);
-        return Vector3.Dot(driveDirection, -blockingWallNormal) > 0.5f;
-    }
-
-    /// <summary>壁に当たった事実だけを記録し、次の物理更新で壁へ押す駆動力を止めます。</summary>
-    private void OnCollisionStay(Collision collision)
-    {
-        foreach (ContactPoint contact in collision.contacts)
-        {
-            if (Mathf.Abs(Vector3.Dot(contact.normal, Vector3.up)) > WallContactMaxUpDot)
-            {
-                continue;
-            }
-
-            blockingWallNormal = contact.normal;
-            lastWallContactFixedTime = Time.fixedTime;
-            return;
-        }
-    }
-
     /// <summary>左右いずれかのタイヤが接地中かつ、バッファ中のジャンプ入力があるときだけジャンプします。</summary>
     private void TryJump()
     {
-        if (isJumping || !HasGroundedTire() || bufferedJumpTime <= 0f)
+        if (!HasGroundedTire() || bufferedJumpTime <= 0f)
         {
             return;
         }
 
         bufferedJumpTime = 0f;
         isJumping = true;
-        // ジャンプ前の水平速度を維持し、走行中の慣性を空中へ引き継ぐ。
+        // ジャンプ開始時は前後の慣性を消し、その場から垂直に跳び上がる。
+        body.linearVelocity = Vector3.up * body.linearVelocity.y;
         body.AddForce(Vector3.up * jumpImpulse, ForceMode.Impulse);
     }
 
@@ -428,64 +353,19 @@ public sealed class PlayerController : MonoBehaviour
     /// <summary>物理本体を倒さず、子モデルへクリック旋回と前後リーンを反映します。</summary>
     private void UpdateVisualLean()
     {
-        // Y軸旋回は物理本体の親回転で済ませ、子モデルには前後リーンだけを加える。
-        Quaternion visualRotation = Quaternion.Euler(forwardInput * maxLeanAngle, 0f, 0f);
-
-        if (visualRoot != null)
+        if (visualRoot == null)
         {
-            Quaternion targetLean = visualRotation * visualRootBaseLocalRotation;
-            visualRoot.localRotation = Quaternion.Slerp(
-                visualRoot.localRotation,
-                targetLean,
-                1f - Mathf.Exp(-leanResponse * Time.deltaTime));
             return;
         }
 
-        for (int i = 0; i < automaticVisualRoots.Length; i++)
-        {
-            Transform modelRoot = automaticVisualRoots[i];
-            modelRoot.localPosition = Vector3.Lerp(
-                modelRoot.localPosition,
-                visualRotation * automaticVisualRootBaseLocalPositions[i],
-                1f - Mathf.Exp(-leanResponse * Time.deltaTime));
-            modelRoot.localRotation = Quaternion.Slerp(
-                modelRoot.localRotation,
-                visualRotation * automaticVisualRootBaseLocalRotations[i],
-                1f - Mathf.Exp(-leanResponse * Time.deltaTime));
-        }
-    }
-
-    /// <summary>未設定のvisualRootの代わりに、タイヤ以外の表示用直下モデルを記録します。</summary>
-    private void CacheAutomaticVisualRoots()
-    {
-        int visualRootCount = 0;
-        for (int i = 0; i < transform.childCount; i++)
-        {
-            Transform child = transform.GetChild(i);
-            if (child.GetComponent<TireController>() == null && child.GetComponent<WheelCollider>() == null)
-            {
-                visualRootCount++;
-            }
-        }
-
-        automaticVisualRoots = new Transform[visualRootCount];
-        automaticVisualRootBaseLocalPositions = new Vector3[visualRootCount];
-        automaticVisualRootBaseLocalRotations = new Quaternion[visualRootCount];
-
-        int visualRootIndex = 0;
-        for (int i = 0; i < transform.childCount; i++)
-        {
-            Transform child = transform.GetChild(i);
-            if (child.GetComponent<TireController>() != null || child.GetComponent<WheelCollider>() != null)
-            {
-                continue;
-            }
-
-            automaticVisualRoots[visualRootIndex] = child;
-            automaticVisualRootBaseLocalPositions[visualRootIndex] = child.localPosition;
-            automaticVisualRootBaseLocalRotations[visualRootIndex] = child.localRotation;
-            visualRootIndex++;
-        }
+        // 初期のモデル姿勢を基準に、見出し角のY回転と前後入力のXリーンを合成する。Rigidbody本体の物理回転は使わない。
+        Quaternion targetLean = Quaternion.Euler(0f, headingYaw, 0f)
+            * visualRootBaseLocalRotation
+            * Quaternion.Euler(forwardInput * maxLeanAngle, 0f, 0f);
+        visualRoot.localRotation = Quaternion.Slerp(
+            visualRoot.localRotation,
+            targetLean,
+            1f - Mathf.Exp(-leanResponse * Time.deltaTime));
     }
 
     /// <summary>再生画面の左下に、マウスまたは左スティックから得た現在の仮想入力を描画します。</summary>

@@ -13,6 +13,8 @@ public sealed class TireController : MonoBehaviour
     [SerializeField] private WheelCollider wheelCollider;
 
     [Header("Ground check")]
+    // 壁や段差の角を地面として誤検出しないための、下向き接地プローブ半径。
+    [SerializeField, Min(0.01f)] private float groundProbeRadius = 0.1f;
     // 接地検出を始める位置をタイヤ中心より少し上へずらし、地面へめり込んだ初期状態でも検出できるようにする。
     [SerializeField, Min(0f)] private float groundProbeStartOffset = 0.12f;
     // タイヤ半径に加えて下方向へ調べる余裕距離。段差上のわずかな隙間を許容する。
@@ -22,7 +24,7 @@ public sealed class TireController : MonoBehaviour
     // 接地クエリの対象レイヤー。既定では Ignore Raycast を除くすべてのレイヤーを対象にする。
     [SerializeField] private LayerMask groundLayers = Physics.DefaultRaycastLayers;
 
-    // 真下のRaycastによる接地結果を保持する、このタイヤ専用の接地フラグ。
+    // SphereCastの接地結果を保持する、このタイヤ専用の接地フラグ。
     [SerializeField] private bool isGrounded;
     // 自分自身のColliderを接地対象から除外するために保持する親Rigidbody。
     private Rigidbody vehicleBody;
@@ -59,43 +61,23 @@ public sealed class TireController : MonoBehaviour
         isGrounded = DetectGround();
     }
 
-    /// <summary>床面へタイヤが沈んだ量を返します。壁面では常に0を返します。</summary>
-    public float GetGroundPenetration()
-    {
-        if (wheelCollider == null || !TryGetGroundHit(out RaycastHit hit))
-        {
-            return 0f;
-        }
-
-        // Rayの始点はタイヤ中心より上なので、そのオフセットを加えた距離が本来の接地点になる。
-        float targetHitDistance = GetWorldTireRadius() + groundProbeStartOffset;
-        return Mathf.Max(0f, targetHitDistance - hit.distance);
-    }
-
-    /// <summary>真下へのRaycastで、BoxCollider と MeshCollider を含む床面だけを検出します。</summary>
+    /// <summary>小さな球を下方向へ掃引し、BoxCollider と MeshCollider を含む真下の地面Colliderを検出します。</summary>
     private bool DetectGround()
     {
-        return TryGetGroundHit(out _);
-    }
-
-    /// <summary>真下にあり、かつ上向きの法線を持つ床面だけを取得します。</summary>
-    private bool TryGetGroundHit(out RaycastHit groundHit)
-    {
-        float tireRadius = GetWorldTireRadius();
+        float tireRadius = Mathf.Max(0.01f, wheelCollider.radius);
+        float probeRadius = Mathf.Min(groundProbeRadius, tireRadius);
         // プレイヤーが前後へリーンしても、接地判定は常にワールド下方向へ行う。
         Vector3 probeDirection = Vector3.down;
         Vector3 probeOrigin = transform.position - probeDirection * groundProbeStartOffset;
         float probeDistance = tireRadius + groundProbeStartOffset + groundProbePadding;
-        RaycastHit[] hits = Physics.RaycastAll(
+        RaycastHit[] hits = Physics.SphereCastAll(
             probeOrigin,
+            probeRadius,
             probeDirection,
             probeDistance,
             groundLayers,
             QueryTriggerInteraction.Ignore);
 
-        bool hasGroundHit = false;
-        float closestDistance = float.PositiveInfinity;
-        groundHit = default;
         foreach (RaycastHit hit in hits)
         {
             if (hit.collider.attachedRigidbody == vehicleBody)
@@ -103,23 +85,13 @@ public sealed class TireController : MonoBehaviour
                 continue;
             }
 
-            if (Vector3.Angle(hit.normal, Vector3.up) <= maxGroundAngle && hit.distance < closestDistance)
+            if (Vector3.Angle(hit.normal, Vector3.up) <= maxGroundAngle)
             {
-                groundHit = hit;
-                closestDistance = hit.distance;
-                hasGroundHit = true;
+                return true;
             }
         }
 
-        return hasGroundHit;
-    }
-
-    /// <summary>Prefabの親スケールを含めた、ワールド空間でのタイヤ半径を返します。</summary>
-    private float GetWorldTireRadius()
-    {
-        Vector3 scale = transform.lossyScale;
-        float largestScale = Mathf.Max(Mathf.Abs(scale.x), Mathf.Abs(scale.y), Mathf.Abs(scale.z));
-        return Mathf.Max(0.01f, wheelCollider.radius * largestScale);
+        return false;
     }
 
     /// <summary>無効化時に WheelCollider の駆動トルクを確実に取り除きます。</summary>
