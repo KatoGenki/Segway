@@ -19,6 +19,25 @@
 # Recordings can get excessive in size
 /[Rr]ecordings/
 
+# Third-party Unity assets are kept locally and restored separately.
+# They are excluded from the public source repository to keep it compact
+# and to avoid redistributing externally licensed packages.
+/Assets/JC_LP_MegaCity/*
+!/Assets/JC_LP_MegaCity/Scenes.meta
+!/Assets/JC_LP_MegaCity/Scenes/
+/Assets/JC_LP_MegaCity/Scenes/*
+!/Assets/JC_LP_MegaCity/Scenes/LP_MegaCity_Demo.unity
+!/Assets/JC_LP_MegaCity/Scenes/LP_MegaCity_Demo.unity.meta
+!/Assets/JC_LP_MegaCity/Materials.meta
+!/Assets/JC_LP_MegaCity/Materials/
+/Assets/JC_LP_MegaCity/Materials/*
+!/Assets/JC_LP_MegaCity/Materials/M_MegaCity_Glass_03.mat
+!/Assets/JC_LP_MegaCity/Materials/M_MegaCity_Glass_03.mat.meta
+/Assets/AllSkyFree/
+/Assets/AllSkyFree.meta
+/Assets/HIVEMIND/
+/Assets/HIVEMIND.meta
+
 # Uncomment this line if you wish to ignore the asset store tools plugin
 # /[Aa]ssets/AssetStoreTools*
 
