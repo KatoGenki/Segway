@@ -5,6 +5,8 @@
 *.prefab text eol=crlf
 *.asset text eol=crlf
 *.meta text eol=crlf
+# Unity baked lighting data is binary and must retain its original bytes.
+LightingData.asset binary
 # Treat common large binary assets as binary.
 *.psd binary
 Assets/Models/Animation/無題.blend filter=lfs diff=lfs merge=lfs -text
