@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 8f2535c99f1b91246b3930b8897319b0
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 300193
+  packageName: Cyberpunk City (Cyberpunk, Cyberpunk City, Sci-Fi City)
+  packageVersion: 1.0
+  assetPath: Assets/HIVEMIND/CyberpunkCity/HDRP(Default)/Scripts/LanternSwing.cs
+  uploadId: 720702

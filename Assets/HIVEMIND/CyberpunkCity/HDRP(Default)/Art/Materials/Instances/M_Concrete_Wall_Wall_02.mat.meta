@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: abc00000000000730487713458137842
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: '{"GUIDArray":[],"withUV":[false,false,false,false]}'
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 300193
+  packageName: Cyberpunk City (Cyberpunk, Cyberpunk City, Sci-Fi City)
+  packageVersion: 1.0
+  assetPath: Assets/HIVEMIND/CyberpunkCity/HDRP(Default)/Art/Materials/Instances/M_Concrete_Wall_Wall_02.mat
+  uploadId: 720702
