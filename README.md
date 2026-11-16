@@ -36,22 +36,14 @@ Unity Hubから指定バージョンのUnity Editorを導入し、このフォ�
 `Library/`、`Temp/`、`Logs/`、`UserSettings/`、IDEのローカル状態、Unityが生成するソリューションファイルは `.gitignore` で除外しています。
 ゲーム固有の `Assets/`、`Packages/`、`ProjectSettings/` は管理対象です。
 
-## 外部アセットの復元
+## アセットとシーンの復元
 
-外部アセットの素材本体は、原則としてGit管理外です。
-
-- `Assets/JC_LP_MegaCity/`
-- `Assets/AllSkyFree/`
-- `Assets/HIVEMIND/`
-
-ゲームの配置はビルド対象の `Assets/JC_LP_MegaCity/Scenes/LP_MegaCity_Demo.unity` に保存しています。このシーンと対応する `.meta`、調整済みの `M_MegaCity_Glass_03.mat` は例外としてGit管理します。
-
-開発環境では、各アセットを正規の入手元から取得し、上記と同じパスに元の `.meta` と一緒に導入してください。MegaCityのインポート時は、上記のシーンとマテリアルおよびそれぞれの `.meta` を上書きしないでください。上書きした場合は、そのファイルだけをGitの確定版から復元してからシーンを開きます。
+`Assets/JC_LP_MegaCity/`、`Assets/AllSkyFree/`、`Assets/HIVEMIND/` の登録済み素材は、クローンとGit LFSで復元します。ゲームの配置はビルド対象の `Assets/JC_LP_MegaCity/Scenes/LP_MegaCity_Demo.unity` に保存しています。
 
 配置を編集した場合は、Unityでシーンを保存し、コミットの差分にシーンファイルが含まれていることを確認してください。初回復元の確認では、`SampleScene` ではなくビルド対象の `LP_MegaCity_Demo` を開きます。
 
 `Assets/` 以下に追加するFBX・Blend・GLB、PNG・PSD・EXR、WAV・MP3、MP4などは、拡張子に応じてGit LFSで管理します。対象は `.gitattributes` に記載しています。Git LFSをインストールし、最初に `git lfs install` を実行してください。その後は通常どおりファイル本体と `.meta` をコミットしてpushします。取得側ではクローンや更新時にLFSファイルが展開されます。展開されていない場合は、プロジェクトのルートで `git lfs pull` を実行してください。
 
-LFSの判定はファイルサイズにかかわらず拡張子で行います。対象外の拡張子で大きなファイルを追加する場合は、コミット前に `.gitattributes` に対象を追加してください。上に記載したGit管理外の外部素材は、引き続き別途導入します。
+LFSの判定はファイルサイズにかかわらず拡張子で行います。対象外の拡張子で大きなファイルを追加する場合は、コミット前に `.gitattributes` に対象を追加してください。
 
 ライセンスは未設定です。公開リポジトリにする場合は、公開前に利用条件に合うライセンスを追加してください。

@@ -5,6 +5,8 @@
 *.prefab text eol=crlf
 *.asset text eol=crlf
 *.meta text eol=crlf
+# Unity baked lighting data is binary and must retain its original bytes.
+LightingData.asset binary
 # Store binary models, textures, audio and video anywhere under Assets in LFS.
 # Match extensions regardless of letter case. Git attributes cannot match by size.
 /Assets/**/*.[fF][bB][xX] filter=lfs diff=lfs merge=lfs -text
