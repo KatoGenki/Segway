@@ -5,15 +5,17 @@ Only Up系の長いステージ進行を基調に、重心移動感のあるセ�
 
 ## 開発環境
 
-- Unity 6.5.8f1
+- Unity 6000.6.10f1
 - Universal Render Pipeline (URP)
 - Unity Input System
-- Cinemachine 2.10.7
-- ProBuilder 6.1.2
-- Splines 2.9.0
+- Cinemachine 6.6.0
+- ProBuilder 6.1.4
+- Splines 2.9.2
 
-Unity Hubから指定バージョンのUnity Editorを導入し、このフォルダをプロジェクトとして開いてください。
-パッケージは `Packages/manifest.json` をもとにUnityが復元します。
+Unity Hubから `ProjectSettings/ProjectVersion.txt` と同じバージョンのUnity Editorを導入し、このフォルダを開いてください。
+パッケージは `Packages/manifest.json` と `Packages/packages-lock.json` をもとにUnityが復元します。
+
+別PCで開く場合は、Git LFSでアセット本体を取得してからUnityを起動してください。プロジェクトをフォルダごと移行した場合は、旧Editorの `Library` を退避してから開くと、キャッシュが再生成されます。
 
 ## 現在の操作
 
